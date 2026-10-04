@@ -1,7 +1,10 @@
-# P3R 主菜单动态壁纸 / P3R Menu Video Wallpaper
+# 饥荒联机版主菜单动态壁纸 / DST Main-Menu Video Wallpaper
 
 饥荒联机版（Don't Starve Together）的**纯客户端** mod：把主菜单背景换成循环播放的视频，
 并能替换主菜单背景音乐。房主不需要安装。
+
+> **名称与商标说明**：本项目与 ATLUS / SEGA 及《Persona 3 Reload》没有任何关联，也不是它的衍生作品，
+> 仓库内不含任何来自该游戏的素材。提到 "P3R" 只是说明这个 mod 常被用来播放该类风格的壁纸，属于指示性描述。
 
 创意工坊：<https://steamcommunity.com/sharedfiles/filedetails/?id=3812384622>
 
@@ -97,7 +100,19 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 代码 MIT（见 `LICENSE`）。**许可只覆盖代码与本仓库自产的示例素材**，
 不包含上文明确排除的《Persona 3 Reload》相关素材。
 
-致谢：循环衔接处的处理思路参考创意工坊 mod「温蒂动态壁纸」（作者 zzzzzzzs、临夏听舟，条目 3547896422）。
+## 参考与致谢
+
+- 整体结构、以及"循环接缝处把首帧图盖在视频上层"的做法，参考创意工坊 mod
+  「温蒂动态壁纸」（作者 zzzzzzzs、临夏听舟，条目 3547896422）。**借的是思路，不是代码。**
+- 逐行比对（对象是该 mod 的 `modmain.lua` / `modinfo.lua` / `scripts/apis.lua`，共 57 KB）：
+  本仓库 253 行有效代码里只有 **10 行**与它相同，且全部是 DST mod 的通用样板——
+  `local Video/Widget/Image = require "widgets/…"` 三行、`modinfo.lua` 的 `*_compatible` 标志块、
+  `GLOBAL.setmetatable(env, {`。反过来查，本 mod 的实现符号
+  `MOVIE_SLOTS`、`read_cfg`、`parse_cfg`、`DURATION_HINTS`、`SEAM_PRE_COVER`、
+  `attach_music_watchdog`、`MUSIC_SHUFFLE`、`ASPECT_TIERS` 在对方文件里出现 **0 次**：
+  多槽位扫描、`movies/N.cfg` 旁路、随机播放看门狗、提前盖尾的接缝状态机、比例换算与黑底都是本仓库自行实现。
+- 我们没有获得「温蒂动态壁纸」作者的代码授权，所以本仓库**也不含他们的任何代码**。
+  若你要基于他们的实现做二次开发，请先到工坊页面确认对方的许可意愿。
 
 ---
 
@@ -129,5 +144,14 @@ They are deliberately three different durations and three different aspect ratio
 `movies/N.cfg` path.
 
 **License.** Code and the bundled original samples are MIT. The excluded *Persona 3 Reload* assets
-are not. Credits: the seam-covering approach follows the workshop mod "Wendy Animated Wallpaper"
-(zzzzzzzs, 临夏听舟, item 3547896422).
+are not. This project is not affiliated with ATLUS / SEGA and ships no material from their game.
+
+**Credit.** The overall structure and the idea of covering the loop seam with a first-frame image
+follow the workshop mod "Wendy Animated Wallpaper" (zzzzzzzs, 临夏听舟, item 3547896422) — the
+*approach*, not the code. Line-by-line against that mod's `modmain.lua` / `modinfo.lua` /
+`scripts/apis.lua` (57 KB): only 10 of our 253 substantive lines match, all of them universal DST
+boilerplate (the three `require "widgets/…"` lines, the `*_compatible` flag block from Klei's
+modinfo template, `GLOBAL.setmetatable(env, {`). Conversely, every symbol that carries this mod's
+own logic — `MOVIE_SLOTS`, `read_cfg`, `parse_cfg`, `DURATION_HINTS`, `SEAM_PRE_COVER`,
+`attach_music_watchdog`, `MUSIC_SHUFFLE`, `ASPECT_TIERS` — appears zero times in their files. We do
+not have that author's permission to distribute their code, so none of it is in this repo either.
