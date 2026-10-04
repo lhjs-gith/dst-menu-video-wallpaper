@@ -44,8 +44,9 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 
 | 键 | 含义 |
 | --- | --- |
-| `wallpaper` | 壁纸槽位 1~8，或"关闭"（不加载视频，只保留音乐和其他开关） |
+| `wallpaper` | 壁纸槽位 1~8、"随机轮换"（每次进主菜单换一张）、或"关闭"（不加载视频，只保留音乐和其他开关） |
 | `fill` | 画面"铺满屏幕" / "保持比例" |
+| `shade` | 画面压暗 0 / 10% / 20% / 30% / 45%，让亮壁纸上的菜单文字更好读 |
 | `video_duration` | 视频时长档位；自定义素材填实际长度，第一圈就能干净衔接 |
 | `video_aspect` | 画面比例档位（16:9 / 16:10 / 1920x1020 / 4:3 / 21:9 / 1:1） |
 | `letterbox` | 原版上下黑边显示/隐藏 |
@@ -93,6 +94,8 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 
 - `Video` 部件没有循环 API，也没有 `SetTint`；`GetSize()` 在 `Load` 之后一律返回 `(0, 0)`，拿不到片子原生尺寸。
 - 接缝处理：在预计播完前把首帧贴图盖在视频上层，再重新 `Play()`；`IsDone()` 之后才重播会黑一帧。
+- 压暗：`Video` 不支持 `SetTint`，所以在壁纸部件最上层蒙一张 `images/global.xml` 的 `square.tex`，用 `SetTint(0,0,0,alpha)` 当半透明黑。这层必须加在**首帧垫图之上**，否则接缝换帧的那一下画面会跟着忽明忽暗。
+- 随机轮换：扫描 `movies/` 时顺手记下"哪些槽位真的存在"，抽取只在这个表里做，所以空槽位不会被抽到；再用 `last_rotated_slot` 挡掉连续两次同一张。抽的时机是主菜单**构造**那一刻，也就是"每次回主菜单换一张"，不是"每次循环换一张"。
 - 不要在主菜单的 `OnHide`/`OnShow` 里对 `Video` 调 `Stop`/`Play`，会触发原生断言崩在 `util/Pool.h`。
 - 客户端 mod 的配置界面**只渲染 list 型选项**，`type="number"` 的不会出现 —— 所以每素材的数值参数走 `movies/N.cfg` 旁路文件（沙盒里 `io.open` + `softresolvefilepath` 可用）。
 - 音量是挂在**事件标签**上的：`SoundEmitter:SetVolume("FEMusic", 0.5)`，它和游戏选项里的"音乐音量"是两条链（后者调 FMOD 的 `set_music` 总线），两者**叠乘**而不是互相覆盖。游戏每次重新 `PlaySound` 都可能把它顶回默认值，而 mod 的钩子在 post-construct、抢不到起播那一刻，所以要在"从没在响 → 在响"这个沿上补一次。
@@ -137,6 +140,12 @@ quoted above.
 `movies/1.ogv` ~ `movies/8.ogv`, and optionally add a plain-text `movies/N.cfg` next to it with
 `duration=` and `aspect=` (per-asset settings beat the global option tiers). Add a first-frame
 cover `images/N.tex` + `images/N.xml` or the seam is covered with black.
+
+**Two more switches.** `wallpaper` also accepts *Rotate*: a different clip every time the main menu
+is constructed, drawn only from slots that actually exist and never the same one twice in a row.
+`shade` (none / 10% / 20% / 30% / 45%) dims the picture so the menu text stays readable on a bright
+wallpaper — `Video` has no `SetTint`, so this is a translucent `square.tex` overlay, placed
+deliberately *above* the first-frame cover so the seam does not flicker brighter.
 
 **Sound, verified.** If your footage carries an audio track the game plays it, layered over the
 menu music, with no volume control of its own — the `music_volume` option (Default / 25% / 50% / 75%) ducks

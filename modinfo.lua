@@ -1,8 +1,8 @@
 name = "P3R 主菜单动态壁纸"
-description = "把主菜单背景换成循环播放的视频，并可替换主菜单背景音乐（纯客户端 mod，房主不需要装）。自带壁纸 1（Persona 3 Reload 主菜单）+ 4 首可选音乐（可选“随机播放”在四首之间洗牌，不会连着放同一首），音乐选“原版”即保留游戏自带 BGM。\n\n换自己的素材：视频按 movies/1.ogv ~ movies/8.ogv 放进 mod 目录（共 8 个槽位，Theora .ogv，游戏不认 mp4）。每张素材可以写自己的参数：同目录放一个 movies/N.cfg 纯文本，一行 duration=20.5、一行 aspect=16:9（比例也接受 1920x1080 或 1.777），它优先于配置项里的“视频时长/视频比例”。想要循环看不出接缝，请选首尾画面接近、结尾不要淡出到黑的片子，再配一张同名首帧图 images/N.tex + images/N.xml（缺图时接缝处会垫黑）。壁纸 2~8 没有文件时会自动回落到可用的那一个。自定义素材选“自动”时第一圈可能仍有一次短暂垫图（周期要播完才知道），把“视频时长”填成片子实际长度即可第一圈就干净。\n\n素材自带音轨的话，游戏会连声音一起放出来（和背景音乐叠着响，视频音量不能单独调，但可以用配置项“主菜单音量”把背景音乐压低）；自带壁纸 1 是纯画面轨，所以不响。但背景音乐不能换成你自己的文件：饥荒没有播放 mp3/ogg/wav 这类裸音频的接口，纯音轨的 .ogg 就算放进 movies/ 也一帧都解不出来（实测），自定义音乐只能是随 mod 打包发布的 FMOD 音色库。想用别的歌，只有把声音封进带画面的 .ogv 当壁纸素材这一条路。\n\n配置项：壁纸槽位（含“关闭”档）、画面铺满/保持比例、视频时长、视频比例、原版黑边/左侧菜单底色/公告栏的显示隐藏、背景音乐、主菜单音量。\n\n致谢：循环衔接处的处理思路参考创意工坊 mod「温蒂动态壁纸」（作者 zzzzzzzs、临夏听舟）。\n\n--- English ---\nReplaces the main menu background with a looping video, and optionally the main menu music. Client-only: only you need to install it, the host does not.\n\nShips with: wallpaper 1 (Persona 3 Reload main menu) + 4 music tracks (Shuffle randomizes among the four, never repeating the same one twice in a row). Pick \"Vanilla / 原版\" to keep the game's own music.\n\nBring your own assets: drop videos into movies/1.ogv ~ movies/8.ogv (8 slots, Theora .ogv only, mp4 is not supported). Each clip can carry its own settings via a plain-text movies/N.cfg next to it - one line duration=20.5, one line aspect=16:9 (1920x1080 or 1.777 also work); the cfg wins over the Video duration / Video aspect options. For a loop you cannot see, use footage whose last frame resembles its first and that does not fade to black at the end, then add a matching first-frame cover images/N.tex + images/N.xml (without it the seam falls back to black). Slots with no file fall back to the first available wallpaper.\n\nNote: the first loop of custom footage may still flash the cover once, because the period is only known after it plays through; set the Video duration option (视频时长) to the clip's real length to get a clean seam from loop one.\n\nSound: if your footage carries an audio track, the widget plays it too (it layers over the menu music and has no separate volume - use the Menu volume option to duck the music instead) - the bundled wallpaper is video-only, hence silent. Your own music files are NOT supported, though: Don't Starve Together has no way to play a bare audio file, and an audio-only .ogg dropped into movies/ decodes nothing (verified in-game), so custom music can only ever ship as a pre-baked FMOD bank inside the mod. The one workaround is to mux your song into a video-bearing .ogv and use it as a wallpaper.\n\nOptions: wallpaper slot (including an Off switch), fit (fill screen / keep aspect), video duration, video aspect, vanilla letterbox, sidebar, MOTD panel, background music, menu music volume.\n\nCredits: the seam-covering approach follows the workshop mod Wendy Animated Wallpaper (zzzzzzzs, 临夏听舟, item 3547896422)."
+description = "感谢订阅。想要加的功能、或者碰到了问题，欢迎在评论区留言——这个 mod 是照着大家的使用反馈继续改的。\n\n致谢：循环衔接处“播完前用首帧图盖住再重播”的处理思路，参考创意工坊 mod「温蒂动态壁纸」（作者 zzzzzzzs、临夏听舟，条目 3547896422）。借的是思路，不是代码。\n\n把主菜单背景换成循环播放的视频，并可替换主菜单背景音乐（纯客户端 mod，房主不需要装）。自带壁纸 1（Persona 3 Reload 主菜单）+ 4 首可选音乐（可选“随机播放”在四首之间洗牌，不会连着放同一首），音乐选“原版”即保留游戏自带 BGM。\n\n换自己的素材：视频按 movies/1.ogv ~ movies/8.ogv 放进 mod 目录（共 8 个槽位，Theora .ogv，游戏不认 mp4）。每张素材可以写自己的参数：同目录放一个 movies/N.cfg 纯文本，一行 duration=20.5、一行 aspect=16:9（比例也接受 1920x1080 或 1.777），它优先于配置项里的“视频时长/视频比例”。想要循环看不出接缝，请选首尾画面接近、结尾不要淡出到黑的片子，再配一张同名首帧图 images/N.tex + images/N.xml（缺图时接缝处会垫黑）。壁纸 2~8 没有文件时会自动回落到可用的那一个。自定义素材选“自动”时第一圈可能仍有一次短暂垫图（周期要播完才知道），把“视频时长”填成片子实际长度即可第一圈就干净。\n\n素材自带音轨的话，游戏会连声音一起放出来（和背景音乐叠着响，视频音量不能单独调，但可以用配置项“主菜单音量”把背景音乐压低）；自带壁纸 1 是纯画面轨，所以不响。但背景音乐不能换成你自己的文件：饥荒没有播放 mp3/ogg/wav 这类裸音频的接口，纯音轨的 .ogg 就算放进 movies/ 也一帧都解不出来（实测），自定义音乐只能是随 mod 打包发布的 FMOD 音色库。想用别的歌，只有把声音封进带画面的 .ogv 当壁纸素材这一条路。\n\n配置项：壁纸槽位（含“随机轮换”和“关闭”档）、画面铺满/保持比例、画面压暗、视频时长、视频比例、原版黑边/左侧菜单底色/公告栏的显示隐藏、背景音乐、主菜单音量。\n\n--- English ---\nThank you for subscribing - feature requests and bug reports in the comments are what keep this mod moving, so please leave one.\n\nCredits: the seam trick (cover the video with its own first frame just before the clip ends, then replay) follows the workshop mod Wendy Animated Wallpaper (zzzzzzzs, 临夏听舟, item 3547896422) - the approach, not the code.\n\nReplaces the main menu background with a looping video, and optionally the main menu music. Client-only: only you need to install it, the host does not.\n\nShips with: wallpaper 1 (Persona 3 Reload main menu) + 4 music tracks (Shuffle randomizes among the four, never repeating the same one twice in a row). Pick \"Vanilla / 原版\" to keep the game's own music.\n\nBring your own assets: drop videos into movies/1.ogv ~ movies/8.ogv (8 slots, Theora .ogv only, mp4 is not supported). Each clip can carry its own settings via a plain-text movies/N.cfg next to it - one line duration=20.5, one line aspect=16:9 (1920x1080 or 1.777 also work); the cfg wins over the Video duration / Video aspect options. For a loop you cannot see, use footage whose last frame resembles its first and that does not fade to black at the end, then add a matching first-frame cover images/N.tex + images/N.xml (without it the seam falls back to black). Slots with no file fall back to the first available wallpaper.\n\nNote: the first loop of custom footage may still flash the cover once, because the period is only known after it plays through; set the Video duration option (视频时长) to the clip's real length to get a clean seam from loop one.\n\nSound: if your footage carries an audio track, the widget plays it too (it layers over the menu music and has no separate volume - use the Menu volume option to duck the music instead) - the bundled wallpaper is video-only, hence silent. Your own music files are NOT supported, though: Don't Starve Together has no way to play a bare audio file, and an audio-only .ogg dropped into movies/ decodes nothing (verified in-game), so custom music can only ever ship as a pre-baked FMOD bank inside the mod. The one workaround is to mux your song into a video-bearing .ogv and use it as a wallpaper.\n\nOptions: wallpaper slot (including Rotate and Off switches), fit (fill screen / keep aspect), shade, video duration, video aspect, vanilla letterbox, sidebar, MOTD panel, background music, menu music volume."
 tagline = "主菜单循环视频背景 + 自定义背景音乐"
 author = "白白"
-version = 8
+version = 9
 forumthread = ""
 
 api_version = 6
@@ -24,7 +24,7 @@ configuration_options = {
     {
         name = "wallpaper",
         label = "壁纸",
-        hover = "视频文件放在 mod 目录的 movies/1.ogv ~ movies/8.ogv。\n没有对应文件的选项会自动回落到第一个可用壁纸。\n选“关闭”则不加载视频，主菜单恢复原样，此时音乐等其他选项仍然生效。\n素材若自带音轨，游戏会连声音一起放出来（跟音乐叠着响，没有单独的视频音量控制）；想只要画面就用纯画面轨的 .ogv，自带壁纸 1 就是这样所以不响。\n多槽位时建议在 movies/<槽位>.cfg 里写这个素材自己的时长和比例，例：\nduration=20.5\naspect=16:9",
+        hover = "视频文件放在 mod 目录的 movies/1.ogv ~ movies/8.ogv。\n没有对应文件的选项会自动回落到第一个可用壁纸。\n选“随机轮换”则每次回到主菜单换一张，只在实际存在的槽位之间抽，不会连着两次同一张。\n选“关闭”则不加载视频，主菜单恢复原样，此时音乐等其他选项仍然生效。\n素材若自带音轨，游戏会连声音一起放出来（跟音乐叠着响，没有单独的视频音量控制）；想只要画面就用纯画面轨的 .ogv，自带壁纸 1 就是这样所以不响。\n多槽位时建议在 movies/<槽位>.cfg 里写这个素材自己的时长和比例，例：\nduration=20.5\naspect=16:9",
         default = 1,
         options = {
             { description = "壁纸 1", data = 1 },
@@ -35,6 +35,7 @@ configuration_options = {
             { description = "壁纸 6", data = 6 },
             { description = "壁纸 7", data = 7 },
             { description = "壁纸 8", data = 8 },
+            { description = "随机轮换 / Rotate", data = 9 },
             { description = "关闭 / Off", data = 0 },
         },
     },
@@ -78,6 +79,19 @@ configuration_options = {
         options = {
             { description = "铺满屏幕", data = 1 },
             { description = "保持比例", data = 2 },
+        },
+    },
+    {
+        name = "shade",
+        label = "画面压暗",
+        hover = "在壁纸最上层蒙一层半透明黑，让主菜单的按钮和文字看得清。\n档位就是这层黑的不透明度：20% 即压掉两成亮度。\n压暗同时盖住循环接缝的首帧垫图，所以接缝处不会忽明忽暗。\n素材本身很暗、或者只想看原画，就选“不压暗”。",
+        default = 0,
+        options = {
+            { description = "不压暗 / None", data = 0 },
+            { description = "10%", data = 1 },
+            { description = "20%", data = 2 },
+            { description = "30%", data = 3 },
+            { description = "45%", data = 4 },
         },
     },
     {

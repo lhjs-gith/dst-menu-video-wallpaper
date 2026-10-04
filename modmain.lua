@@ -80,6 +80,7 @@ end
 -- 资源注册：只登记实际存在的壁纸文件，空槽位自动跳过
 
 local wallpapers = {}
+local available_slots = {}
 Assets = {}
 
 for slot = 1, MOVIE_SLOTS do
@@ -104,6 +105,7 @@ for slot = 1, MOVIE_SLOTS do
             Assets[#Assets + 1] = Asset("ATLAS", atlas)
         end
         wallpapers[slot] = entry
+        available_slots[#available_slots + 1] = slot
         -- 只有中文的话这行会被日志剥掉，参数排错要靠它，保持 ASCII
         print("[p3r] wallpaper " .. slot .. " cfg=" .. tostring(cfgtext ~= nil) ..
               " duration=" .. tostring(entry.duration_hint) .. " aspect=" .. tostring(entry.aspect))
@@ -113,10 +115,35 @@ end
 Assets[#Assets + 1] = Asset("FILE", SOUND_BANK .. ".fsb")
 Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 
+-- 随机数两处要用：壁纸轮换和音乐洗牌。os.time() 精度只到秒，但两者都是一次加载抽一次，够用
+math.randomseed(os.time())
+
+-- 轮换档：主菜单界面每被构造一次就换一张，并且不让同一张连着出现两次（和音乐洗牌同一个规矩）。
+-- 配置项里 1~8 是定向槽位、0 是关闭，所以轮换用 9
+local WALLPAPER_ROTATE = MOVIE_SLOTS + 1
+local last_rotated_slot = nil
+
+local function rotate_slot()
+    local n = #available_slots
+    if n == 0 then return nil end
+    if n == 1 then return available_slots[1] end
+    local picked
+    repeat
+        picked = available_slots[math.random(n)]
+    until picked ~= last_rotated_slot
+    last_rotated_slot = picked
+    return picked
+end
+
 local function selected_wallpaper()
     local wanted = GetModConfigData("wallpaper")
     -- 关掉壁纸时不能回落到槽位 1，否则"关闭"这一档等于没生效
     if wanted == 0 then return nil end
+    if wanted == WALLPAPER_ROTATE then
+        local slot = rotate_slot()
+        print("[p3r] rotate pick=" .. tostring(slot))
+        return slot and wallpapers[slot]
+    end
     if wallpapers[wanted] then
         return wallpapers[wanted]
     end
@@ -149,7 +176,6 @@ end
 local song = GetModConfigData("music")
 if song == MUSIC_SHUFFLE then
     music_enabled, music_shuffle = true, true
-    math.randomseed(os.time())
     music_track = pick_track()
 elseif type(song) == "number" and song > 0 and song <= MUSIC_TRACK_COUNT then
     music_enabled = true
@@ -180,6 +206,12 @@ end
 local Video = require "widgets/video"
 local Widget = require "widgets/widget"
 local Image = require "widgets/image"
+
+-- 压暗档：主菜单的按钮压在亮色壁纸上不好读，所以在壁纸最上层蒙一层半透明黑。
+-- 这一层必须在首帧垫图之上，否则接缝换帧的那一下画面会跟着忽明忽暗。
+local SHADE_TIERS = { [1] = 0.1, [2] = 0.2, [3] = 0.3, [4] = 0.45 }
+local shade_alpha = SHADE_TIERS[GetModConfigData("shade")]
+print("[p3r] shade raw=" .. tostring(GetModConfigData("shade")) .. " alpha=" .. tostring(shade_alpha))
 
 -- IsDone 翻回 false 只代表引擎接下了新一轮播放，第一帧还要一点时间才真的画出来，
 -- 所以重开之后再垫一会儿才揭盖
@@ -219,6 +251,13 @@ local Wallpaper = Class(Widget, function(self, wallpaper)
         self.still:Hide()
     end
 
+    if shade_alpha then
+        self.shade = self:AddChild(Image("images/global.xml", "square.tex"))
+        self.shade:SetHRegPoint(ANCHOR_MIDDLE)
+        self.shade:SetVRegPoint(ANCHOR_MIDDLE)
+        self.shade:SetTint(0, 0, 0, shade_alpha)
+    end
+
     self.playing = false
     self.restarting = false
     self.cover_time = 0
@@ -253,6 +292,8 @@ function Wallpaper:Resize()
     -- 黑底铺满整个视口：保持比例模式下多出来的边也要盖住
     self.backdrop:SetSize(view_w, view_h)
     if self.still then self.still:SetSize(w, h) end
+    -- 压暗层按视口铺满：保持比例模式下留出来的黑边也要一起盖，不然接缝处会亮出一圈边
+    if self.shade then self.shade:SetSize(view_w, view_h) end
 end
 
 -- VideoWidget 没有 SetTint，所以不能用"把视频淡出"的办法露出底下的图
@@ -325,7 +366,7 @@ end
 --------------------------------------------------------------------------
 -- 主菜单接入
 
-local chosen_wallpaper = selected_wallpaper()
+-- 选哪一张放在每次构造时算，不在文件作用域先定死：轮换档要靠这个，每次回主菜单才换得了
 
 -- 原版 FE_MUSIC 这个事件在 FMOD 里自己就是无限循环的，所以游戏只在主菜单构造时 PlaySound 一次；
 -- 本 mod 盘里的歌是播一遍就结束，于是挂个看门狗：确认它响过之后，标签一旦不再 PlayingSound 就重新触发。
@@ -381,6 +422,7 @@ AddClassPostConstruct("screens/redux/multiplayermainscreen", function(self)
     if GetModConfigData("motd") == 2 and self.motd_panel then self.motd_panel:Hide() end
 
     local host
+    local chosen_wallpaper = selected_wallpaper()
     if chosen_wallpaper then
         if self.banner_root then self.banner_root:Hide() end
         host = self.fixed_root:AddChild(Wallpaper(chosen_wallpaper))
