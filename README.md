@@ -52,6 +52,7 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 | `sidebar` | 左侧菜单栏底色显示/隐藏 |
 | `motd` | 右侧公告栏显示/隐藏 |
 | `music` | 内置 4 首 / 随机播放 / 原版 BGM |
+| `music_volume` | 主菜单音量：默认 / 25% / 50% / 75%，只压主菜单这一首（音乐选"原版"时同样生效） |
 
 ## 用自己的素材
 
@@ -71,7 +72,8 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 
 ## 关于声音：能做到和做不到
 
-- 素材自带音轨的话游戏会**连声音一起放**，和背景音乐叠着响；没有单独的音量控制，响不响、多响都取决于素材本身。
+- 素材自带音轨的话游戏会**连声音一起放**，和背景音乐叠着响；素材那一轨本身没有音量控制，响不响、多响都取决于素材，
+  但背景音乐可以用配置项「主菜单音量」压下去给它让路。
 - **不能**换成自己的 mp3/ogg/wav。饥荒没有任何播放裸音频文件的接口，自定义音乐只能随 mod 打包预烘焙的 FMOD 音色库。
   实测把纯音轨的 `.ogg` 放进 `movies/` 彻底不认——`Video` 部件要求存在 Theora 画面轨，
   只有 Vorbis 的话一帧都解不出来，完全没有声音。
@@ -85,6 +87,7 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 
 `generate.sh` 是完整的复现命令；滤镜图存在同目录的 `still_*.filter.txt` 里。
 试玩就按脚本末尾注释改名成 `movies/2.ogv` + `movies/2.cfg` + `images/2.tex` + `images/2.xml`。
+这三段**只存在于仓库**：工坊发布包从 v8 起只带槽位 1（瘦身回 33 MB），想让它们进包得自己拷进 `movies/` 和 `images/`。
 
 ## 实现要点（都实测过）
 
@@ -92,7 +95,8 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 - 接缝处理：在预计播完前把首帧贴图盖在视频上层，再重新 `Play()`；`IsDone()` 之后才重播会黑一帧。
 - 不要在主菜单的 `OnHide`/`OnShow` 里对 `Video` 调 `Stop`/`Play`，会触发原生断言崩在 `util/Pool.h`。
 - 客户端 mod 的配置界面**只渲染 list 型选项**，`type="number"` 的不会出现 —— 所以每素材的数值参数走 `movies/N.cfg` 旁路文件（沙盒里 `io.open` + `softresolvefilepath` 可用）。
-- 散包 `mods/<name>` 与已订阅的工坊版 UUID 相同时，**工坊版优先**，跑起来的是它而不是你改的那份。
+- 音量是挂在**事件标签**上的：`SoundEmitter:SetVolume("FEMusic", 0.5)`，它和游戏选项里的"音乐音量"是两条链（后者调 FMOD 的 `set_music` 总线），两者**叠乘**而不是互相覆盖。游戏每次重新 `PlaySound` 都可能把它顶回默认值，而 mod 的钩子在 post-construct、抢不到起播那一刻，所以要在"从没在响 → 在响"这个沿上补一次。
+- 散包 `mods/<name>` 与已订阅的工坊版 UUID 相同时，**谁生效以模组列表的勾选为准**（两份都启用时工坊版顶掉散包）。所以测自己的新字节最省事的办法是改散包并在列表里启用它，别去动 `workshop/content/322330/<id>/`——那是 Steam 的地盘，一次 workshop query 就会用已发布的包把你改的覆盖掉。
 - 日志里中文 `print` 会被剥掉，参数排错要靠 ASCII 探针行。
 
 ## 许可
@@ -133,15 +137,17 @@ quoted above.
 cover `images/N.tex` + `images/N.xml` or the seam is covered with black.
 
 **Sound, verified.** If your footage carries an audio track the game plays it, layered over the
-menu music, with no separate volume control. You cannot use a bare audio file: DST has no API for
-playing mp3/ogg/wav, and a `Video` widget needs a Theora video track — an audio-only `.ogg` decodes
-nothing at all. The only workaround is muxing a song into a picture-bearing `.ogv`.
+menu music, with no volume control of its own — the `music_volume` option (Default / 25% / 50% / 75%) ducks
+the *music* to make room, and it stacks with the game's own music-volume slider because that one drives
+FMOD's `set_music` bus while this one sets the event's volume. You cannot use a bare audio file: DST has
+no API for playing mp3/ogg/wav, and a `Video` widget needs a Theora video track — an audio-only `.ogg`
+decodes nothing at all. The only workaround is muxing a song into a picture-bearing `.ogv`.
 
 **`samples/`** holds three original wallpapers (1920x1020/12s, 1280x720/8s, 2016x864/16s) drawn
 procedurally with ffmpeg filters, plus `generate.sh` to reproduce them. The camera drift is driven
 by `sin(2*PI*t/T)` with `T` equal to the clip length, so the loop seam is continuous by construction.
 They are deliberately three different durations and three different aspect ratios, to exercise the
-`movies/N.cfg` path.
+`movies/N.cfg` path. They live in the repo only — the published workshop package ships slot 1 alone.
 
 **License.** Code and the bundled original samples are MIT. The excluded *Persona 3 Reload* assets
 are not. This project is not affiliated with ATLUS / SEGA and ships no material from their game.

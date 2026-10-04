@@ -161,6 +161,19 @@ if music_enabled then
     TheSim:PreloadFile(SOUND_BANK .. ".fsb")
 end
 
+-- 主菜单音量档位：只压标签 "FEMusic" 的这一个事件。游戏选项里的"音乐音量"调的是 FMOD 的
+-- set_music 总线，总线音量 × 单事件音量是叠乘关系，所以这一档是在玩家设好的音量上再压低。
+-- 素材 .ogv 自带音轨时，背景音乐不能单独调音量，但可以把这一首压下去让画面声更清楚。
+local MUSIC_VOLUME_TIERS = { [1] = 0.25, [2] = 0.5, [3] = 0.75 }
+local music_volume = MUSIC_VOLUME_TIERS[GetModConfigData("music_volume")]
+-- 配置项没存过也会读成 nil，跟"选了默认档"是同一种值，所以把原始档位一起打出来
+print("[p3r] music_volume raw=" .. tostring(GetModConfigData("music_volume")) ..
+      " applied=" .. tostring(music_volume))
+
+local function duck_music(sound)
+    if music_volume ~= nil then sound:SetVolume("FEMusic", music_volume) end
+end
+
 --------------------------------------------------------------------------
 -- 壁纸部件：视频循环播放
 
@@ -337,8 +350,26 @@ local function attach_music_watchdog(host)
                     GLOBAL.FE_MUSIC = SOUND_EVENT_ROOT .. music_track
                 end
                 sound:PlaySound(FE_MUSIC, "FEMusic")
+                duck_music(sound)
             end
         end
+        if orig_update then return orig_update(self, dt) end
+    end
+end
+
+-- 音量是挂在标签上的，游戏每次重新 PlaySound 都可能把它顶回默认值，而本 mod 的钩子在
+-- post-construct，抢不到它起播的那一刻。所以盯"从没在响到在响"这个沿，起播当帧补一次
+local function attach_music_volume(host)
+    if music_volume == nil then return end
+    local sound = TheFrontEnd:GetSound()
+    if not sound or type(sound.SetVolume) ~= "function" then return end
+
+    local was_playing = false
+    local orig_update = host.OnUpdate
+    function host:OnUpdate(dt)
+        local playing = sound:PlayingSound("FEMusic")
+        if playing and not was_playing then duck_music(sound) end
+        was_playing = playing
         if orig_update then return orig_update(self, dt) end
     end
 end
@@ -357,12 +388,15 @@ AddClassPostConstruct("screens/redux/multiplayermainscreen", function(self)
         host:Play()
         -- 这里刻意不包装 OnHide/OnShow：子菜单打开时让视频继续解码，
         -- 返回主菜单就不会有重开门缝。在里面 Stop/Play 会直接让游戏 abort() 崩掉
-    elseif music_enabled then
-        -- 壁纸关掉了，没有会每帧回调的部件，建个空壳专门给音乐打点
+    elseif music_enabled or music_volume ~= nil then
+        -- 壁纸关掉了，没有会每帧回调的部件，建个空壳专门给音乐/音量打点
         host = self.fixed_root:AddChild(Widget("P3RMusicTicker"))
         host:UpdateWhilePaused(true)
         host:StartUpdating()
     end
 
-    if host then attach_music_watchdog(host) end
+    if host then
+        attach_music_watchdog(host)
+        attach_music_volume(host)
+    end
 end)
