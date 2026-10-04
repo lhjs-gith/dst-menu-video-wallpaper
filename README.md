@@ -102,7 +102,9 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 ## 许可
 
 代码 MIT（见 `LICENSE`）。**许可只覆盖代码与本仓库自产的示例素材**，
-不包含上文明确排除的《Persona 3 Reload》相关素材。
+不包含上文明确排除的《Persona 3 Reload》相关素材，那些内容也不得从本仓库再分发。
+`LICENSE` 保持标准 MIT 原文、范围声明写在这里，是因为 GitHub 的许可证识别只认纯模板文本，
+追加段落会让条目显示成 "Other"。
 
 ## 参考与致谢
 
