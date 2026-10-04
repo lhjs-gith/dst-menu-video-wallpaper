@@ -1,0 +1,18 @@
+# —— 版权素材：提取自《Persona 3 Reload》，不随源码发布 ——
+/movies/
+/sound/
+/images/
+/preview.jpg
+/modicon.tex
+/modicon.xml
+
+# —— 本地工具链与中间产物 ——
+/_tools/
+/_release/
+/_backup/
+/_inbox/
+/_shots/
+*.zip
+*.dmp
+*.log
+*.png
