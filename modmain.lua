@@ -106,11 +106,11 @@ for slot = 1, MOVIE_SLOTS do
         end
         wallpapers[slot] = entry
         available_slots[#available_slots + 1] = slot
-        -- 只有中文的话这行会被日志剥掉，参数排错要靠它，保持 ASCII
-        print("[p3r] wallpaper " .. slot .. " cfg=" .. tostring(cfgtext ~= nil) ..
-              " duration=" .. tostring(entry.duration_hint) .. " aspect=" .. tostring(entry.aspect))
     end
 end
+
+-- 只留这一行 ASCII 加载标记：在 client_log.txt 里搜 "[p3r]" 就能确认加载的是哪一份包、扫到了哪些槽位
+print("[p3r] loaded, wallpapers found: " .. table.concat(available_slots, ","))
 
 Assets[#Assets + 1] = Asset("FILE", SOUND_BANK .. ".fsb")
 Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
@@ -141,7 +141,6 @@ local function selected_wallpaper()
     if wanted == 0 then return nil end
     if wanted == WALLPAPER_ROTATE then
         local slot = rotate_slot()
-        print("[p3r] rotate pick=" .. tostring(slot))
         return slot and wallpapers[slot]
     end
     if wallpapers[wanted] then
@@ -192,9 +191,6 @@ end
 -- 素材 .ogv 自带音轨时，背景音乐不能单独调音量，但可以把这一首压下去让画面声更清楚。
 local MUSIC_VOLUME_TIERS = { [1] = 0.25, [2] = 0.5, [3] = 0.75 }
 local music_volume = MUSIC_VOLUME_TIERS[GetModConfigData("music_volume")]
--- 配置项没存过也会读成 nil，跟"选了默认档"是同一种值，所以把原始档位一起打出来
-print("[p3r] music_volume raw=" .. tostring(GetModConfigData("music_volume")) ..
-      " applied=" .. tostring(music_volume))
 
 local function duck_music(sound)
     if music_volume ~= nil then sound:SetVolume("FEMusic", music_volume) end
@@ -211,7 +207,6 @@ local Image = require "widgets/image"
 -- 这一层必须在首帧垫图之上，否则接缝换帧的那一下画面会跟着忽明忽暗。
 local SHADE_TIERS = { [1] = 0.1, [2] = 0.2, [3] = 0.3, [4] = 0.45 }
 local shade_alpha = SHADE_TIERS[GetModConfigData("shade")]
-print("[p3r] shade raw=" .. tostring(GetModConfigData("shade")) .. " alpha=" .. tostring(shade_alpha))
 
 -- IsDone 翻回 false 只代表引擎接下了新一轮播放，第一帧还要一点时间才真的画出来，
 -- 所以重开之后再垫一会儿才揭盖

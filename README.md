@@ -21,9 +21,10 @@
 
 ## 仓库里**没有**什么（重要）
 
-以下素材提取自《Persona 3 Reload》，版权归 ATLUS / SEGA，因此**不随源码发布**：
+以下素材的版权不在本仓库作者手里，因此**不随源码发布**：
 
-- `movies/1.ogv` —— 自带壁纸（P3R 主菜单循环片段）
+- `movies/1.ogv` —— 自带壁纸（P3R 主菜单循环片段），提取自《Persona 3 Reload》
+- `movies/2.ogv` ~ `movies/4.ogv` 及配套 `images/2.tex` ~ `images/4.tex`、`movies/2.cfg` ~ `4.cfg` —— 工坊包里的另外三张壁纸，是别人在 Wallpaper Engine 上发布的二次创作（条目 3141346973 / 3794989445 / 3484837776），本仓库这边只做了裁剪、无缝循环与 Theora 转码，画面著作权属于原作者与 ATLUS / SEGA
 - `sound/mymusic.fsb` / `sound/mymusic.fbp` —— 自带的主菜单配乐（FMOD 音色库）
 - `images/1.tex` / `images/1.xml` —— 上面那段视频的首帧垫图
 - `modicon.tex` / `modicon.xml` —— 工坊条目图标（P3R 角色图）
@@ -44,7 +45,7 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 
 | 键 | 含义 |
 | --- | --- |
-| `wallpaper` | 壁纸槽位 1~8、"随机轮换"（每次进主菜单换一张）、或"关闭"（不加载视频，只保留音乐和其他开关） |
+| `wallpaper` | 壁纸槽位 1~8、"随机轮换"（主菜单界面每重新构造一次换一张，实测约等于每次启动游戏换一张）、或"关闭"（不加载视频，只保留音乐和其他开关） |
 | `fill` | 画面"铺满屏幕" / "保持比例" |
 | `shade` | 画面压暗 0 / 10% / 20% / 30% / 45%，让亮壁纸上的菜单文字更好读 |
 | `video_duration` | 视频时长档位；自定义素材填实际长度，第一圈就能干净衔接 |
@@ -88,7 +89,7 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 
 `generate.sh` 是完整的复现命令；滤镜图存在同目录的 `still_*.filter.txt` 里。
 试玩就按脚本末尾注释改名成 `movies/2.ogv` + `movies/2.cfg` + `images/2.tex` + `images/2.xml`。
-这三段**只存在于仓库**：工坊发布包从 v8 起只带槽位 1（瘦身回 33 MB），想让它们进包得自己拷进 `movies/` 和 `images/`。
+这三段**只存在于仓库**：工坊包 v8 瘦身回只带槽位 1，v9 又带上 2/3/4 三张——但那三张是别人在 Wallpaper Engine 上发布的二创（裁剪、无缝循环和转码是我们做的，画面不是），所以两边不能互换；想让这三段示例素材进包，得自己拷进 `movies/` 和 `images/`。
 
 ## 实现要点（都实测过）
 
@@ -100,12 +101,12 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 - 客户端 mod 的配置界面**只渲染 list 型选项**，`type="number"` 的不会出现 —— 所以每素材的数值参数走 `movies/N.cfg` 旁路文件（沙盒里 `io.open` + `softresolvefilepath` 可用）。
 - 音量是挂在**事件标签**上的：`SoundEmitter:SetVolume("FEMusic", 0.5)`，它和游戏选项里的"音乐音量"是两条链（后者调 FMOD 的 `set_music` 总线），两者**叠乘**而不是互相覆盖。游戏每次重新 `PlaySound` 都可能把它顶回默认值，而 mod 的钩子在 post-construct、抢不到起播那一刻，所以要在"从没在响 → 在响"这个沿上补一次。
 - 散包 `mods/<name>` 与已订阅的工坊版 UUID 相同时，**谁生效以模组列表的勾选为准**（两份都启用时工坊版顶掉散包）。所以测自己的新字节最省事的办法是改散包并在列表里启用它，别去动 `workshop/content/322330/<id>/`——那是 Steam 的地盘，一次 workshop query 就会用已发布的包把你改的覆盖掉。
-- 日志里中文 `print` 会被剥掉，参数排错要靠 ASCII 探针行。
+- 日志里中文 `print` 会被剥掉，参数排错要靠 ASCII 探针行。发布版只留一行加载标记 `[p3r] loaded, wallpapers found: 1,2,3,4`，它同时回答"加载的是哪一份包"和"扫到了哪些槽位"；至于屏上此刻正在放哪一张，日志里没有，得拿截图对每段素材的首帧做逐帧 PSNR 比对来归因。
 
 ## 许可
 
 代码 MIT（见 `LICENSE`）。**许可只覆盖代码与本仓库自产的示例素材**，
-不包含上文明确排除的《Persona 3 Reload》相关素材，那些内容也不得从本仓库再分发。
+不包含上文明确排除的任何第三方内容（《Persona 3 Reload》提取片段、以及别人在 Wallpaper Engine 上发布的三张二创），那些内容也不得从本仓库再分发。
 `LICENSE` 保持标准 MIT 原文、范围声明写在这里，是因为 GitHub 的许可证识别只认纯模板文本，
 追加段落会让条目显示成 "Other"。
 
@@ -158,10 +159,17 @@ decodes nothing at all. The only workaround is muxing a song into a picture-bear
 procedurally with ffmpeg filters, plus `generate.sh` to reproduce them. The camera drift is driven
 by `sin(2*PI*t/T)` with `T` equal to the clip length, so the loop seam is continuous by construction.
 They are deliberately three different durations and three different aspect ratios, to exercise the
-`movies/N.cfg` path. They live in the repo only — the published workshop package ships slot 1 alone.
+`movies/N.cfg` path. They live in the repo only. The workshop package slimmed back down to slot 1 at
+v8 and picked up three more wallpapers at v9, but those three are other people's Wallpaper Engine
+re-cuts, so the two distributions are not interchangeable — copy these into `movies/` and `images/`
+if you want them in a build.
 
-**License.** Code and the bundled original samples are MIT. The excluded *Persona 3 Reload* assets
-are not. This project is not affiliated with ATLUS / SEGA and ships no material from their game.
+**License.** Code and the procedurally generated `samples/` are MIT. Nothing listed as excluded is —
+the *Persona 3 Reload* material is not, and neither are the three Wallpaper Engine re-cuts. This
+project is not affiliated with ATLUS / SEGA. **This repository** carries no material from their game;
+the published workshop item does, by the author's choice (slot 1 is extracted from *Persona 3 Reload*,
+slots 2/3/4 are re-cuts of Wallpaper Engine items 3141346973 / 3794989445 / 3484837776). Cloning here
+gets you code plus original samples only.
 
 **Credit.** The overall structure and the idea of covering the loop seam with a first-frame image
 follow the workshop mod "Wendy Animated Wallpaper" (zzzzzzzs, 临夏听舟, item 3547896422) — the
