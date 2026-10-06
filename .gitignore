@@ -1,10 +1,11 @@
 # —— 版权素材：提取自《Persona 3 Reload》，不随源码发布 ——
 /movies/
 /sound/
-/images/
 /preview.jpg
 /modicon.tex
 /modicon.xml
+# 首帧垫图是 P3R 画面的截帧，所以整个 images/ 都不发
+/images/
 
 # —— 本地工具链与中间产物 ——
 /_tools/

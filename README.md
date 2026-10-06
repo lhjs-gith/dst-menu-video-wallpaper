@@ -45,7 +45,7 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 
 | 键 | 含义 |
 | --- | --- |
-| `wallpaper` | 壁纸槽位 1~8、"随机轮换"（主菜单界面每重新构造一次换一张，实测约等于每次启动游戏换一张）、或"关闭"（不加载视频，只保留音乐和其他开关） |
+| `wallpaper` | 壁纸槽位 1~8、"轮换"（每重新构造一次主菜单过一张，按顺序、进度存存档里，所以跨启动也接着走）、或"关闭"（不加载视频，只保留音乐和其他开关） |
 | `fill` | 画面"铺满屏幕" / "保持比例" |
 | `shade` | 画面压暗 0 / 10% / 20% / 30% / 45%，让亮壁纸上的菜单文字更好读 |
 | `video_duration` | 视频时长档位；自定义素材填实际长度，第一圈就能干净衔接 |
@@ -55,6 +55,25 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 | `motd` | 右侧公告栏显示/隐藏 |
 | `music` | 内置 4 首 / 随机播放 / 原版 BGM |
 | `music_volume` | 主菜单音量：默认 / 25% / 50% / 75%，只压主菜单这一首（音乐选"原版"时同样生效） |
+| `key_scheme` | 切换快捷键档位：WASD（默认）/ 方向键 / 不使用按键 |
+
+## 用按键换壁纸、换 BGM
+
+主菜单里直接按，不用进配置界面：**上下 = 上一张 / 下一张壁纸，左右 = 上一首 / 下一首音乐**。
+档位在三张列表里选（WASD / 方向键 / 不使用），想完全自定义就在 mod 根目录放一个纯文本 `keys.cfg`：
+
+```
+wp_prev=up        # 上一张壁纸
+wp_next=down      # 下一张壁纸
+ms_prev=f9        # 上一首音乐
+ms_next=f10       # 下一首音乐
+```
+
+- 值可以写字母、数字、`up` / `down` / `left` / `right`、`f1`~`f12`，或者 `none` 关掉这一项。
+- `keys.cfg` 的优先级高于配置项档位，只覆盖写了的那几行；认不出的键名当作没写这一行，不会把默认档位抹掉。
+- 方向键和 WASD 在原版里**都是**菜单导航键（`frontend.lua` 同时听 `CONTROL_MOVE_*` 和 `CONTROL_FOCUS_*`），
+  所以本 mod 会把自己占用的那几个键从导航里摘出去：按 W 只换壁纸、选中框不跳，而你没占用的那一组（以及手柄十字键）照常导航。
+- 只有一个壁纸槽位、或壁纸选了"关闭"时，换壁纸的键自然什么都不做；音乐只有一首时同理。
 
 ## 用自己的素材
 
@@ -96,8 +115,16 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 - `Video` 部件没有循环 API，也没有 `SetTint`；`GetSize()` 在 `Load` 之后一律返回 `(0, 0)`，拿不到片子原生尺寸。
 - 接缝处理：在预计播完前把首帧贴图盖在视频上层，再重新 `Play()`；`IsDone()` 之后才重播会黑一帧。
 - 压暗：`Video` 不支持 `SetTint`，所以在壁纸部件最上层蒙一张 `images/global.xml` 的 `square.tex`，用 `SetTint(0,0,0,alpha)` 当半透明黑。这层必须加在**首帧垫图之上**，否则接缝换帧的那一下画面会跟着忽明忽暗。
-- 随机轮换：扫描 `movies/` 时顺手记下"哪些槽位真的存在"，抽取只在这个表里做，所以空槽位不会被抽到；再用 `last_rotated_slot` 挡掉连续两次同一张。抽的时机是主菜单**构造**那一刻，也就是"每次回主菜单换一张"，不是"每次循环换一张"。
+- 轮换：扫描 `movies/` 时顺手记下"哪些槽位真的存在"，轮换只在这个表里**按顺序**过，所以空槽位既不会被抽到也不会被跳过。切的时机是主菜单**构造**那一刻，也就是"每次回主菜单换一张"，不是"每次循环换一张"（实测在子界面之间来回不算重新构造，基本就是每次启动游戏换一张）。进度（下一张的下标）走 `TheSim:SetPersistentString`，落在 `Documents/Klei/DoNotStarveTogether/<SteamID>/client_save/`，每个 profile 一份、重装 mod 不丢，也不用往 mod 目录里写东西；按键手动切到的那一张同样算进度。唯一要注意：**读档回调是异步的**，第一次构造时可能还没回来，那种情况就先随机一张、把进度写下去，并且回调后到也不覆盖自己刚写的值——最坏就是装好后的第一次启动不连续。
 - 不要在主菜单的 `OnHide`/`OnShow` 里对 `Video` 调 `Stop`/`Play`，会触发原生断言崩在 `util/Pool.h`。
+- 换壁纸要毁掉正在播的 `Video` 部件，而**同帧 `Kill()` 播放中的视频，一秒后必 `abort()`**。所以拆成两帧：当帧只 `Stop()`+`Hide()`
+  旧的，下一帧由一个独立的空壳 ticker 部件来 `Kill()`。这正是原版 `screens/moviedialog.lua` 的做法——它要么等 `IsDone()` 再杀，
+  要么只 `Stop()` 然后等屏幕弹掉连带销毁，从不杀还在播的片子。
+- 按键只认 `keyup`：长按时系统连发 `keydown`，一次物理按键的 `keyup` 只来一回，否则一按就跳好几张。动作也不在回调里当场做，
+  只记一笔到队列，交给下一帧的 `OnUpdate` 消费，并且只在主菜单确实是栈顶屏幕时才消费（`FrontEnd` 每帧只更新栈顶那一屏）。
+- 要改 `FrontEnd` 的行为必须用 `AddGlobalClassPostConstruct("frontend", "FrontEnd", fn)`：`frontend.lua` 只把 `FrontEnd`
+  定义成全局、文件末尾没有 `return`，用 `AddClassPostConstruct` 会踩中 modutil 的 `assert(type(classdef) == "table")`，
+  症状是 `MOD ERROR` + 模组被自动关掉 + `Force aborting`，看起来像"游戏无故崩溃"。
 - 客户端 mod 的配置界面**只渲染 list 型选项**，`type="number"` 的不会出现 —— 所以每素材的数值参数走 `movies/N.cfg` 旁路文件（沙盒里 `io.open` + `softresolvefilepath` 可用）。
 - 音量是挂在**事件标签**上的：`SoundEmitter:SetVolume("FEMusic", 0.5)`，它和游戏选项里的"音乐音量"是两条链（后者调 FMOD 的 `set_music` 总线），两者**叠乘**而不是互相覆盖。游戏每次重新 `PlaySound` 都可能把它顶回默认值，而 mod 的钩子在 post-construct、抢不到起播那一刻，所以要在"从没在响 → 在响"这个沿上补一次。
 - 散包 `mods/<name>` 与已订阅的工坊版 UUID 相同时，**谁生效以模组列表的勾选为准**（两份都启用时工坊版顶掉散包）。所以测自己的新字节最省事的办法是改散包并在列表里启用它，别去动 `workshop/content/322330/<id>/`——那是 Steam 的地盘，一次 workshop query 就会用已发布的包把你改的覆盖掉。
@@ -142,8 +169,19 @@ quoted above.
 `duration=` and `aspect=` (per-asset settings beat the global option tiers). Add a first-frame
 cover `images/N.tex` + `images/N.xml` or the seam is covered with black.
 
-**Two more switches.** `wallpaper` also accepts *Rotate*: a different clip every time the main menu
-is constructed, drawn only from slots that actually exist and never the same one twice in a row.
+**Switch with the keyboard.** On the main menu, up/down step the wallpaper and left/right step the
+BGM track — no need to open the config screen. Pick a preset (`WASD`, `Arrows`, or `None`), or drop a
+plain-text `keys.cfg` next to `modmain.lua` to bind each of the four actions to any letter, digit,
+arrow or `f1`–`f12` (`none` unbinds one). Per-file settings beat the preset. Both arrows *and* WASD
+are menu-navigation keys in the vanilla frontend (`frontend.lua` listens to `CONTROL_MOVE_*` and
+`CONTROL_FOCUS_*` alike), so the keys this mod claims are taken out of navigation: pressing W changes
+the wallpaper without moving the selection frame, while the group you did not claim — and the
+controller D-pad — still navigates normally.
+
+**Two more switches.** `wallpaper` also accepts *Rotate*: it walks the slots that actually exist in
+order, one per main-menu build, and the position is saved in your profile
+(`TheSim:SetPersistentString` → `client_save/`), so a restart continues the cycle instead of repeating
+the wallpaper you just looked at. Stepping with the keyboard counts as progress too.
 `shade` (none / 10% / 20% / 30% / 45%) dims the picture so the menu text stays readable on a bright
 wallpaper — `Video` has no `SetTint`, so this is a translucent `square.tex` overlay, placed
 deliberately *above* the first-frame cover so the seam does not flicker brighter.

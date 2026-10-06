@@ -118,37 +118,69 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 -- 随机数两处要用：壁纸轮换和音乐洗牌。os.time() 精度只到秒，但两者都是一次加载抽一次，够用
 math.randomseed(os.time())
 
--- 轮换档：主菜单界面每被构造一次就换一张，并且不让同一张连着出现两次（和音乐洗牌同一个规矩）。
--- 配置项里 1~8 是定向槽位、0 是关闭，所以轮换用 9
+-- 轮换档：主菜单界面每被构造一次就换一张，进度要跨启动记住，所以每次放哪张就把"下一张的下标"
+-- 写进 TheSim 的持久化字符串（落在 Documents/Klei/DoNotStarveTogether/<SteamID>/client_save/ 下面，
+-- 每个 profile 一份、重装 mod 不丢，也不用往 mod 目录里写东西）。这样轮换就是按顺序一张一张过，
+-- 关掉游戏再开也不会连着两次同一张。配置项里 1~8 是定向槽位、0 是关闭，所以轮换用 9
 local WALLPAPER_ROTATE = MOVIE_SLOTS + 1
-local last_rotated_slot = nil
+
+local ROTATE_KEY = "p3r_rotate_next"
+local rotate_next = 1      -- 下一次轮换该放 available_slots 里的第几个
+local rotate_ready = false -- 读档回调回来了，上面的值才是从上次接着的
+local rotate_written = false
+
+local function load_rotate_progress()
+    if TheSim == nil or TheSim.GetPersistentString == nil then return end
+    pcall(function()
+        TheSim:GetPersistentString(ROTATE_KEY, function(success, data)
+            -- 回调可能比第一次构造还晚到，那时候我们自己的进度已经写出去了，不能拿旧值盖它
+            if success and not rotate_written then
+                rotate_next = tonumber(data) or rotate_next
+                rotate_ready = true
+            end
+        end, false)
+    end)
+end
+
+local function save_rotate_progress()
+    if TheSim == nil or TheSim.SetPersistentString == nil then return end
+    pcall(function() TheSim:SetPersistentString(ROTATE_KEY, tostring(rotate_next), false) end)
+end
+
+load_rotate_progress()
+
+-- 谁在播就按谁记进度：轮换抽的、玩家按键挑的，都算"这张看过了，下次从下一张接着"
+local function remember_slot(slot)
+    local n = #available_slots
+    local at
+    for i = 1, n do
+        if available_slots[i] == slot then
+            at = i
+            break
+        end
+    end
+    if at == nil then return end
+    rotate_next = at % n + 1
+    rotate_written = true
+    save_rotate_progress()
+end
 
 local function rotate_slot()
     local n = #available_slots
     if n == 0 then return nil end
     if n == 1 then return available_slots[1] end
-    local picked
-    repeat
-        picked = available_slots[math.random(n)]
-    until picked ~= last_rotated_slot
-    last_rotated_slot = picked
-    return picked
+    if not rotate_ready then return available_slots[math.random(n)] end
+    return available_slots[(rotate_next - 1) % n + 1]
 end
 
-local function selected_wallpaper()
+-- 选哪一张放在每次构造时算，不在文件作用域先定死：轮换档要靠这个，每次回主菜单才换得了
+local function pick_initial_slot()
     local wanted = GetModConfigData("wallpaper")
     -- 关掉壁纸时不能回落到槽位 1，否则"关闭"这一档等于没生效
     if wanted == 0 then return nil end
-    if wanted == WALLPAPER_ROTATE then
-        local slot = rotate_slot()
-        return slot and wallpapers[slot]
-    end
-    if wallpapers[wanted] then
-        return wallpapers[wanted]
-    end
-    for slot = 1, MOVIE_SLOTS do
-        if wallpapers[slot] then return wallpapers[slot] end
-    end
+    if wanted == WALLPAPER_ROTATE then return rotate_slot() end
+    if wallpapers[wanted] then return wanted end
+    return available_slots[1]
 end
 
 --------------------------------------------------------------------------
@@ -197,11 +229,14 @@ local function duck_music(sound)
 end
 
 --------------------------------------------------------------------------
--- 壁纸部件：视频循环播放
+-- 壁纸部件用到的部件类
 
 local Video = require "widgets/video"
 local Widget = require "widgets/widget"
 local Image = require "widgets/image"
+
+--------------------------------------------------------------------------
+-- 壁纸部件：视频循环播放
 
 -- 压暗档：主菜单的按钮压在亮色壁纸上不好读，所以在壁纸最上层蒙一层半透明黑。
 -- 这一层必须在首帧垫图之上，否则接缝换帧的那一下画面会跟着忽明忽暗。
@@ -262,6 +297,7 @@ local Wallpaper = Class(Widget, function(self, wallpaper)
     self.period = wallpaper.duration_hint
     self.period_guess = self.period ~= nil
     self.loop_start = 0
+    -- 整棵壁纸子树都不吃点击：它铺满全屏，会把主菜单所有按钮挡在拾取之外
     self:SetClickable(false)
     self:UpdateWhilePaused(true)
     self:StartUpdating()
@@ -291,7 +327,8 @@ function Wallpaper:Resize()
     if self.shade then self.shade:SetSize(view_w, view_h) end
 end
 
--- VideoWidget 没有 SetTint，所以不能用"把视频淡出"的办法露出底下的图
+-- Video 部件有 SetTint（widgets/video.lua:33），但实测它对画面没有可见作用，
+-- 所以不能用"把视频淡出"的办法露出底下的图
 function Wallpaper:ShowCover()
     if self.covered or not self.still then return end
     self.covered = true
@@ -308,6 +345,13 @@ function Wallpaper:Play()
     if self.playing then return end
     self.playing = true
     self.video:Play()
+end
+
+-- 退役：换壁纸时先停掉再藏起来，真正的 Kill 留到下一帧（见 show_slot）
+function Wallpaper:Retire()
+    self.playing = false
+    if self.video then self.video:Stop() end
+    self:Hide()
 end
 
 -- 播完立刻在当前帧重开。原来用 inst:DoTaskInTime(0) 排任务，要等 scheduler 调度到，
@@ -359,9 +403,102 @@ function Wallpaper:OnUpdate(dt)
 end
 
 --------------------------------------------------------------------------
--- 主菜单接入
+-- 按键切换壁纸与音乐
+--
+-- 饥荒主菜单的按键导航监听了两组控制：方向键(FOCUS_*)和 WASD(MOVE_*)，实测原版按键表
+-- move_up=W、focus_up=上方向键，所以这两组按下去选中框都会跳，而原生按键回调拦不住它
+-- （Input:OnRawKey 不往 C++ 返回任何东西）。下面那层 FrontEnd:OnFocusMove 包装只把"由我们
+-- 占用的那个物理键引起的"导航吃掉：默认方案下 WASD 专心换壁纸/换歌，方向键照常导航。
+--
+-- 配置界面只认列表项，给不了任意按键，所以留了 mod 目录下的 keys.cfg 做完全自定义，
+-- 一行一项，值可以是字母、数字、up/down/left/right 或 f1~f12，写 none 表示关掉这一项：
+--   wp_prev=W   上一张壁纸
+--   wp_next=S   下一张壁纸
+--   ms_prev=A   上一首音乐
+--   ms_next=D   下一首音乐
+-- 没写的行沿用配置项里选的那档预设。
 
--- 选哪一张放在每次构造时算，不在文件作用域先定死：轮换档要靠这个，每次回主菜单才换得了
+local KEY_PRESETS = {
+    { wp_prev = KEY_W, wp_next = KEY_S, ms_prev = KEY_A, ms_next = KEY_D },
+    { wp_prev = KEY_UP, wp_next = KEY_DOWN, ms_prev = KEY_LEFT, ms_next = KEY_RIGHT },
+}
+local KEY_OFF = 3     -- 配置项里"不使用按键"那一档
+
+local KEY_NAMES = { up = KEY_UP, down = KEY_DOWN, left = KEY_LEFT, right = KEY_RIGHT }
+for c = 97, 122 do KEY_NAMES[string.char(c)] = c end
+for c = 49, 57 do KEY_NAMES[string.char(c)] = c end
+for i = 1, 12 do KEY_NAMES["f" .. i] = 281 + i end
+
+local KEY_FIELDS = { wp_prev = true, wp_next = true, ms_prev = true, ms_next = true }
+
+local function keyname(code)
+    for name, c in pairs(KEY_NAMES) do
+        if c == code then return name end
+    end
+    return "?"
+end
+
+-- 一项都没认出来的键名当作"没写这一行"，认不出的填法不会把默认档位抹掉
+local function parse_keys(text)
+    local out = {}
+    if type(text) ~= "string" then return out end
+    for line in text:gmatch("[^\r\n]+") do
+        local key, value = line:match("^%s*(%a[%w_]*)%s*=%s*(.-)%s*$")
+        if key and value ~= "" and KEY_FIELDS[key:lower()] then
+            local low = value:lower()
+            local code
+            if low == "none" or low == "off" then
+                code = false
+            else
+                code = KEY_NAMES[low]
+            end
+            if code ~= nil then out[key:lower()] = code end
+        end
+    end
+    return out
+end
+
+local function load_bindings()
+    local b = {}
+    local scheme = GetModConfigData("key_scheme")
+    if scheme == nil then scheme = 1 end        -- 没保存过的配置项读回来是 nil
+    if scheme ~= KEY_OFF then
+        for k, v in pairs(KEY_PRESETS[scheme] or KEY_PRESETS[1]) do b[k] = v end
+    end
+    for k, v in pairs(parse_keys(read_cfg("keys.cfg"))) do b[k] = v end
+    return b
+end
+
+local bindings = load_bindings()
+
+-- 我们占用的那组键不能再顺带移动菜单选中框。实测原版按键表里 W/A/S/D 就是 MOVE_*、
+-- 方向键是 FOCUS_*，而 frontend.lua:858-865 两组都监听，所以方向键和 WASD 都会跳；
+-- 原生按键回调又拦不住（Input:OnRawKey 不往 C++ 返回任何东西），只能在这一层把
+-- "由我们那个键引起的 focus move"吃掉。判定用的是物理键当前有没有按下，所以没被我们
+-- 占用的那一组（比如默认方案下的方向键、手柄十字键）导航完全不受影响。
+local NAV_DIR = { wp_prev = MOVE_UP, wp_next = MOVE_DOWN, ms_prev = MOVE_LEFT, ms_next = MOVE_RIGHT }
+
+local swallow = {}
+for field, dir in pairs(NAV_DIR) do
+    local key = bindings[field]
+    if key then swallow[dir] = key end
+end
+
+-- 这里必须用 AddGlobalClassPostConstruct：frontend.lua 只把 FrontEnd 定义成全局
+-- （frontend.lua:42），文件末尾没有 return，所以 AddClassPostConstruct 的 require 断言会失败
+AddGlobalClassPostConstruct("frontend", "FrontEnd", function(self)
+    local orig = self.OnFocusMove
+    function self:OnFocusMove(dir, down)
+        local key = swallow[dir]
+        if key ~= nil and TheInput ~= nil and TheInput:IsKeyDown(key) then
+            return true
+        end
+        if orig then return orig(self, dir, down) end
+    end
+end)
+
+--------------------------------------------------------------------------
+-- 主菜单接入
 
 -- 原版 FE_MUSIC 这个事件在 FMOD 里自己就是无限循环的，所以游戏只在主菜单构造时 PlaySound 一次；
 -- 本 mod 盘里的歌是播一遍就结束，于是挂个看门狗：确认它响过之后，标签一旦不再 PlayingSound 就重新触发。
@@ -410,30 +547,137 @@ local function attach_music_volume(host)
     end
 end
 
+--------------------------------------------------------------------------
+-- 换壁纸 / 换曲
+--
+-- 换壁纸要毁掉正在播的 Video 部件，这是全 mod 唯一会这么做地方。Klei 自己的 MovieDialog
+-- 从不杀还在播的片子：要么等 IsDone（moviedialog.lua:41-45），要么只 Stop 然后等屏幕弹掉
+-- 再连着 Kill（moviedialog.lua:71-76）。实测直接 Kill 播放中的视频，一秒后必 abort，
+-- 所以这里分两帧：当帧 Stop+Hide 旧的、下一帧才 Kill（见 ticker 的 OnUpdate）。
+
+local menu = nil
+local keys_installed = false
+
+local function show_slot(m, slot)
+    local entry = wallpapers[slot]
+    if entry == nil then return end
+    -- 先建新的再停旧的：中间不能有一帧两张都不在
+    local wp = m.root:AddChild(Wallpaper(entry))
+    wp:MoveToBack()
+    wp:Play()
+    if m.wp then
+        m.wp:Retire()
+        m.dying = m.wp
+    end
+    m.wp, m.slot = wp, slot
+    remember_slot(slot)
+    print("[p3r] wallpaper -> slot " .. slot)
+end
+
+local function step_wallpaper(m, dir)
+    local n = #available_slots
+    if n < 2 or m.wp == nil then return end
+    local at
+    for i = 1, n do
+        if available_slots[i] == m.slot then
+            at = i
+            break
+        end
+    end
+    if at == nil then return end
+    show_slot(m, available_slots[(at - 1 + dir) % n + 1])
+end
+
+local function switch_track(dir)
+    if not music_enabled or MUSIC_TRACK_COUNT < 2 then return end
+    music_track = ((music_track or 1) - 1 + dir) % MUSIC_TRACK_COUNT + 1
+    -- 手动切过歌之后就不再自动洗牌，否则玩家挑的这一首下一轮就被随机顶掉了
+    music_shuffle = false
+    GLOBAL.FE_MUSIC = SOUND_EVENT_ROOT .. music_track
+    local sound = TheFrontEnd:GetSound()
+    if sound and type(sound.KillSound) == "function" then
+        sound:KillSound("FEMusic")
+        sound:PlaySound(FE_MUSIC, "FEMusic")
+        duck_music(sound)
+    end
+    print("[p3r] music -> " .. FE_MUSIC)
+end
+
+-- 按键回调只记一笔，动作留到下一帧的 OnUpdate 再做。只认主菜单在最上面的时候：
+-- FrontEnd 每帧只更新栈顶那一屏（frontend.lua:760），子界面开着时队列不会被消费
+local function queue(kind, dir)
+    local m = menu
+    if m ~= nil and TheFrontEnd:GetActiveScreen() == m.screen then
+        m[kind] = dir
+    end
+end
+
+local function install_key_handlers()
+    if keys_installed then return end
+    if TheInput == nil or TheInput.AddKeyUpHandler == nil then return end
+    keys_installed = true
+
+    -- 认 keyup 不认 keydown：长按时系统会连发 keydown，一次按键能连跳好几张；
+    -- 一次物理按键的 keyup 只来一回
+    local specs = {
+        { "wp_prev", "want_wp", -1 },
+        { "wp_next", "want_wp", 1 },
+        { "ms_prev", "want_ms", -1 },
+        { "ms_next", "want_ms", 1 },
+    }
+    local installed = {}
+    for _, s in ipairs(specs) do
+        local key = bindings[s[1]]
+        if key then
+            local kind, dir = s[2], s[3]
+            TheInput:AddKeyUpHandler(key, function() queue(kind, dir) end)
+            installed[#installed + 1] = s[1] .. "=" .. keyname(key)
+        end
+    end
+    print("[p3r] keys: " .. table.concat(installed, " "))
+end
+
 -- 开关类选项（黑边/菜单底色/公告栏）与壁纸、音乐互相独立，所以这个钩子无条件装
 AddClassPostConstruct("screens/redux/multiplayermainscreen", function(self)
     if GetModConfigData("sidebar") == 2 and self.sidebar then self.sidebar:Hide() end
     if GetModConfigData("letterbox") == 2 and self.letterbox then self.letterbox:Hide() end
     if GetModConfigData("motd") == 2 and self.motd_panel then self.motd_panel:Hide() end
 
-    local host
-    local chosen_wallpaper = selected_wallpaper()
-    if chosen_wallpaper then
+    local m = { screen = self, root = self.fixed_root }
+    menu = m
+
+    local slot = pick_initial_slot()
+    if slot then
         if self.banner_root then self.banner_root:Hide() end
-        host = self.fixed_root:AddChild(Wallpaper(chosen_wallpaper))
-        host:MoveToBack()
-        host:Play()
+        show_slot(m, slot)
         -- 这里刻意不包装 OnHide/OnShow：子菜单打开时让视频继续解码，
         -- 返回主菜单就不会有重开门缝。在里面 Stop/Play 会直接让游戏 abort() 崩掉
-    elseif music_enabled or music_volume ~= nil then
-        -- 壁纸关掉了，没有会每帧回调的部件，建个空壳专门给音乐/音量打点
-        host = self.fixed_root:AddChild(Widget("P3RMusicTicker"))
-        host:UpdateWhilePaused(true)
-        host:StartUpdating()
     end
 
-    if host then
-        attach_music_watchdog(host)
-        attach_music_volume(host)
+    -- 每帧的活都集中在这个空壳上：换壁纸毁掉的是壁纸自己的子树，看门狗和按键队列不受影响
+    local ticker = self.fixed_root:AddChild(Widget("P3RTicker"))
+    ticker:UpdateWhilePaused(true)
+    ticker:StartUpdating()
+    m.ticker = ticker
+    function ticker:OnUpdate(dt)
+        -- 上一帧停下来的那张，到这帧才真的毁掉
+        if m.dying then
+            m.dying:Kill()
+            m.dying = nil
+        end
+        if m.want_wp then
+            local d = m.want_wp
+            m.want_wp = nil
+            step_wallpaper(m, d)
+        end
+        if m.want_ms then
+            local d = m.want_ms
+            m.want_ms = nil
+            switch_track(d)
+        end
     end
+    attach_music_watchdog(ticker)
+    attach_music_volume(ticker)
+
+    install_key_handlers()
 end)
