@@ -243,16 +243,20 @@ local Image = require "widgets/image"
 local SHADE_TIERS = { [1] = 0.1, [2] = 0.2, [3] = 0.3, [4] = 0.45 }
 local shade_alpha = SHADE_TIERS[GetModConfigData("shade")]
 
--- IsDone 翻回 false 只代表引擎接下了新一轮播放，第一帧还要一点时间才真的画出来，
--- 所以重开之后再垫一会儿才揭盖
-local SEAM_REVEAL_DELAY = 0.35
+-- 揭盖只认一个闸门：既要到点（cover_off），又要引擎确实接下了这一轮播放（IsDone 为假）。
+-- IsDone 为真期间必然还没有新帧，那时候揭盖露出来的就是黑，所以两个条件缺一不可。
+local SEAM_REVEAL_DELAY = 0.35        -- 热缓存那一档，实测基本被 IsDone 翻假的时刻兜住
+local SEAM_COLD_REVEAL_DELAY = 4.0    -- 片子在本进程里第一次解码时，第一帧要晚得多，多垫一点
+local COLD_FIRST_FRAME = 2.6          -- 起播那一档：冷解码 Play 之后约 2.4 秒才吐第一帧
 -- 实测循环周期倒数这么多秒就先把首帧图盖上去：片子结尾自己有一段淡出的黑，
 -- 等 IsDone 才盖就漏黑了，必须提前盖住尾巴
 local SEAM_PRE_COVER = 0.7
 -- IsDone 一直为真说明重开没生效，到这个点就再试一次 Play
 local SEAM_MAX_COVER = 3
--- 时长种子比"到点了还没播完"再多等这么多秒就判定种子无效
-local SEAM_GUESS_TOLERANCE = 1
+-- 时长种子（素材自带的媒体时长）比"到点了还没播完"再多等这么多秒就判定种子无效。
+-- 引擎的 IsDone 本来就比最后一帧晚 1~2 秒，所以这一档必须大于那段排水，否则种子会在
+-- 接缝前一刻自己作废，白丢一段提前盖尾
+local SEAM_GUESS_TOLERANCE = 3
 -- 音乐停了多久之后重新触发。留出一点余量，避免起播/切场景那一瞬的假"没在响"造成重复叠播
 local MUSIC_RESTART_DELAY = 1
 
@@ -297,6 +301,13 @@ local Wallpaper = Class(Widget, function(self, wallpaper)
     self.period = wallpaper.duration_hint
     self.period_guess = self.period ~= nil
     self.loop_start = 0
+    -- 本实例的第一圈按冷解码对待：先把首帧图盖上顶住起播那一段没有帧的黑，到点再交给闸门揭
+    self.first_cycle = self.still ~= nil
+    self.cover_off = nil
+    if self.still then
+        self:ShowCover()
+        self.cover_off = COLD_FIRST_FRAME
+    end
     -- 整棵壁纸子树都不吃点击：它铺满全屏，会把主菜单所有按钮挡在拾取之外
     self:SetClickable(false)
     self:UpdateWhilePaused(true)
@@ -360,7 +371,19 @@ function Wallpaper:OnUpdate(dt)
     self.uptime = self.uptime + dt
     if not self.playing then return end
 
-    if self.video:IsDone() then
+    local done = self.video:IsDone()
+
+    -- 唯一的揭盖出口：到点、且引擎确实接下了这一轮（不为 done）。
+    -- 尾巴盖上之后除了这里没有任何地方会揭盖，所以引擎那段"播完了但还没重开"的排水期
+    -- （实测最后一帧之后约 2 秒，冷解码时只给黑帧）一定整个被垫图盖掉。
+    if self.covered and self.cover_off and not done and self.uptime >= self.cover_off then
+        self.cover_off = nil
+        self.restarting = false
+        self.cover_time = 0
+        self:HideCover()
+    end
+
+    if done then
         self.cover_time = self.cover_time + dt
         self:ShowCover()
         if not self.restarting then
@@ -369,7 +392,12 @@ function Wallpaper:OnUpdate(dt)
             self.period = self.uptime - self.loop_start
             self.period_guess = nil
             self.loop_start = self.uptime
+            self.cover_time = 0
             self.video:Play()
+            -- 本实例的第一圈按冷解码那一档多垫，之后各圈回到短档，免得每圈都冻一下
+            self.cover_off = self.uptime
+                + (self.first_cycle and SEAM_COLD_REVEAL_DELAY or SEAM_REVEAL_DELAY)
+            self.first_cycle = nil
         elseif self.cover_time >= SEAM_MAX_COVER then
             -- 重开没生效、一直停在播完状态：再试一次，不能干等着
             self.cover_time = 0
@@ -378,26 +406,19 @@ function Wallpaper:OnUpdate(dt)
         return
     end
 
-    if self.restarting then
-        self.cover_time = self.cover_time + dt
-        if self.cover_time >= SEAM_REVEAL_DELAY then
-            self.restarting = false
-            self.cover_time = 0
-            self:HideCover()
-        end
-        return
-    end
-
     -- 还没播完但已经进了尾巴：这段片子自己是淡出的，等 IsDone 才盖就漏黑了，提前盖住
     if self.period then
         local elapsed = self.uptime - self.loop_start
         if elapsed >= self.period - SEAM_PRE_COVER then
+            -- 盖上同时把期限清掉：尾巴一直盖到 IsDone 之后的那一档才揭，
+            -- 中途按时间揭盖露出来的就是那约 2 秒排水黑帧（实测黑 2.07 秒正是这么来的）
+            self.cover_off = nil
             self:ShowCover()
         end
-        -- 用的是时长种子而到点还没播完，说明素材被换过了，这条立刻作废，不能一直冻着画面
+        -- 用的是时长种子而到点还没播完，说明素材被换过了，这条作废，不能再拿它决定盖尾时机。
+        -- 作废只是不再提前盖尾巴，盖子本身由上面那个闸门负责收，所以这里不会露黑。
         if self.period_guess and elapsed >= self.period + SEAM_GUESS_TOLERANCE then
             self.period, self.period_guess = nil, nil
-            self:HideCover()
         end
     end
 end
@@ -634,7 +655,10 @@ local function install_key_handlers()
             installed[#installed + 1] = s[1] .. "=" .. keyname(key)
         end
     end
-    print("[p3r] keys: " .. table.concat(installed, " "))
+    print("[p3r] keys: " .. table.concat(installed, " ")
+        .. " scheme=" .. tostring(GetModConfigData("key_scheme"))
+        .. " preset1=" .. tostring(KEY_PRESETS[1].wp_prev) .. "/" .. tostring(KEY_PRESETS[1].ms_next)
+        .. " bind=" .. tostring(bindings.wp_prev) .. "/" .. tostring(bindings.ms_next))
 end
 
 -- 开关类选项（黑边/菜单底色/公告栏）与壁纸、音乐互相独立，所以这个钩子无条件装
