@@ -109,9 +109,6 @@ for slot = 1, MOVIE_SLOTS do
     end
 end
 
--- 只留这一行 ASCII 加载标记：在 client_log.txt 里搜 "[p3r]" 就能确认加载的是哪一份包、扫到了哪些槽位
-print("[p3r] loaded, wallpapers found: " .. table.concat(available_slots, ","))
-
 Assets[#Assets + 1] = Asset("FILE", SOUND_BANK .. ".fsb")
 Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 
@@ -452,13 +449,6 @@ for i = 1, 12 do KEY_NAMES["f" .. i] = 281 + i end
 
 local KEY_FIELDS = { wp_prev = true, wp_next = true, ms_prev = true, ms_next = true }
 
-local function keyname(code)
-    for name, c in pairs(KEY_NAMES) do
-        if c == code then return name end
-    end
-    return "?"
-end
-
 -- 一项都没认出来的键名当作"没写这一行"，认不出的填法不会把默认档位抹掉
 local function parse_keys(text)
     local out = {}
@@ -592,7 +582,6 @@ local function show_slot(m, slot)
     end
     m.wp, m.slot = wp, slot
     remember_slot(slot)
-    print("[p3r] wallpaper -> slot " .. slot)
 end
 
 local function step_wallpaper(m, dir)
@@ -621,7 +610,6 @@ local function switch_track(dir)
         sound:PlaySound(FE_MUSIC, "FEMusic")
         duck_music(sound)
     end
-    print("[p3r] music -> " .. FE_MUSIC)
 end
 
 -- 按键回调只记一笔，动作留到下一帧的 OnUpdate 再做。只认主菜单在最上面的时候：
@@ -646,19 +634,13 @@ local function install_key_handlers()
         { "ms_prev", "want_ms", -1 },
         { "ms_next", "want_ms", 1 },
     }
-    local installed = {}
     for _, s in ipairs(specs) do
         local key = bindings[s[1]]
         if key then
             local kind, dir = s[2], s[3]
             TheInput:AddKeyUpHandler(key, function() queue(kind, dir) end)
-            installed[#installed + 1] = s[1] .. "=" .. keyname(key)
         end
     end
-    print("[p3r] keys: " .. table.concat(installed, " ")
-        .. " scheme=" .. tostring(GetModConfigData("key_scheme"))
-        .. " preset1=" .. tostring(KEY_PRESETS[1].wp_prev) .. "/" .. tostring(KEY_PRESETS[1].ms_next)
-        .. " bind=" .. tostring(bindings.wp_prev) .. "/" .. tostring(bindings.ms_next))
 end
 
 -- 开关类选项（黑边/菜单底色/公告栏）与壁纸、音乐互相独立，所以这个钩子无条件装
