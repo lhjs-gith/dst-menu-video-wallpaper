@@ -112,7 +112,8 @@ end
 Assets[#Assets + 1] = Asset("FILE", SOUND_BANK .. ".fsb")
 Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 
--- 随机数两处要用：壁纸轮换和音乐洗牌。os.time() 精度只到秒，但两者都是一次加载抽一次，够用
+-- 随机数只在两处兜底：壁纸轮换读不到存档时、音乐第一次装还没存档时。os.time() 精度只到秒，
+-- 但两处都是一次加载抽一次，够用
 math.randomseed(os.time())
 
 -- 轮换档：主菜单界面每被构造一次就换一张，进度要跨启动记住，所以每次放哪张就把"下一张的下标"
@@ -184,27 +185,95 @@ end
 -- 主菜单音乐
 
 local MUSIC_TRACK_COUNT = 4
--- music 配置项里"随机播放"那一档的值；1~4 是定向曲目，0 是原版
-local MUSIC_SHUFFLE = MUSIC_TRACK_COUNT + 1
+-- music 配置项里"轮换播放"那一档的值；1~4 是定向曲目，0 是原版
+local MUSIC_ROTATE = MUSIC_TRACK_COUNT + 1
 
 local music_enabled = false
-local music_shuffle = false
+local music_rotate = false
 local music_track = nil
 
--- 洗牌时不让同一首连着放两次
-local function pick_track()
+-- 曲目也跨启动记进度。键和壁纸那条分开：两个轮换各自走各自的，谁都不盖谁。
+-- 实测（2026-10-08）：回调在 modmain 加载那一帧就回来了（日志 00:00:05），而主菜单界面要到
+-- 00:00:36 才构造、游戏自己的起播更晚，所以在这里改写 GLOBAL.FE_MUSIC 是静默的——
+-- 不会出现"一首已经在响的歌被硬切"。
+local MUSIC_ROTATE_KEY = "p3r_music_next"
+local music_next = nil       -- 下一首该放第几首；nil 表示还没从存档读回来
+local music_written = false  -- 我们自己写过之后，晚到的回调不能拿旧值盖回来
+
+local function save_music_progress()
+    if music_next == nil then return end
+    music_written = true
+    if TheSim == nil or TheSim.SetPersistentString == nil then return end
+    pcall(function() TheSim:SetPersistentString(MUSIC_ROTATE_KEY, tostring(music_next), false) end)
+end
+
+-- 有下标就按 1→2→3→4→1 顺序过（跨启动也接着上次），没有就退回"随机但不连着同一首"
+local function take_track()
     if MUSIC_TRACK_COUNT <= 1 then return 1 end
-    local picked
-    repeat
-        picked = math.random(MUSIC_TRACK_COUNT)
-    until picked ~= music_track
-    return picked
+    if music_next == nil then
+        local picked
+        repeat
+            picked = math.random(MUSIC_TRACK_COUNT)
+        until picked ~= music_track
+        return picked
+    end
+    local t = music_next
+    music_next = t % MUSIC_TRACK_COUNT + 1
+    save_music_progress()
+    return t
+end
+
+-- 手动切歌之后要把正在响的这首并进序列，否则下一次自动换曲会接在一个玩家没听过的下标上
+local function remember_track()
+    if music_track == nil or MUSIC_TRACK_COUNT <= 1 then return end
+    music_next = music_track % MUSIC_TRACK_COUNT + 1
+    save_music_progress()
+end
+
+local function music_already_started()
+    if TheFrontEnd == nil or TheFrontEnd.GetSound == nil then return false end
+    local sound = TheFrontEnd:GetSound()
+    if sound == nil or type(sound.PlayingSound) ~= "function" then return false end
+    return sound:PlayingSound("FEMusic") and true or false
+end
+
+local function load_music_progress()
+    if TheSim == nil or TheSim.GetPersistentString == nil then return end
+    pcall(function()
+        TheSim:GetPersistentString(MUSIC_ROTATE_KEY, function(success, data)
+            -- 回调体在沙盒里裸跑，出错会一路抛到 frontend.lua 的 Update 让游戏自杀，所以整段包 pcall
+            pcall(function()
+                if music_written then return end
+                local n = success and tonumber(data) or nil
+                if n ~= nil then
+                    n = math.floor(n)
+                    if n < 1 or n > MUSIC_TRACK_COUNT then n = nil end
+                end
+                if n == nil then
+                    -- 第一次装（或存档被清）：没有下标可读，就把刚随机那一首的下一首记进去
+                    music_track = music_track or 1
+                    remember_track()
+                    return
+                end
+                if music_already_started() then
+                    -- 起播比回调还早（实测不会，但走到这一步也别硬切），改成把听见的这首并进序列
+                    remember_track()
+                    return
+                end
+                music_next = n
+                if music_rotate then
+                    music_track = take_track()
+                    GLOBAL.FE_MUSIC = SOUND_EVENT_ROOT .. music_track
+                end
+            end)
+        end, false)
+    end)
 end
 
 local song = GetModConfigData("music")
-if song == MUSIC_SHUFFLE then
-    music_enabled, music_shuffle = true, true
-    music_track = pick_track()
+if song == MUSIC_ROTATE then
+    music_enabled, music_rotate = true, true
+    music_track = take_track()
 elseif type(song) == "number" and song > 0 and song <= MUSIC_TRACK_COUNT then
     music_enabled = true
     music_track = song
@@ -213,6 +282,8 @@ end
 if music_enabled then
     GLOBAL.FE_MUSIC = SOUND_EVENT_ROOT .. music_track
     TheSim:PreloadFile(SOUND_BANK .. ".fsb")
+    -- 定向曲目档不动下标，只有轮换档需要在读档回来后换成按序列的那一首
+    if music_rotate then load_music_progress() end
 end
 
 -- 主菜单音量档位：只压标签 "FEMusic" 的这一个事件。游戏选项里的"音乐音量"调的是 FMOD 的
@@ -528,9 +599,9 @@ local function attach_music_watchdog(host)
             idle = idle + dt
             if idle >= MUSIC_RESTART_DELAY then
                 idle = 0
-                -- 洗牌档：每轮重开之前换一首，下一次 PlaySound 用的就是新事件路径
-                if music_shuffle then
-                    music_track = pick_track()
+                -- 轮换档：每轮重开之前换一首，下一次 PlaySound 用的就是新事件路径
+                if music_rotate then
+                    music_track = take_track()
                     GLOBAL.FE_MUSIC = SOUND_EVENT_ROOT .. music_track
                 end
                 sound:PlaySound(FE_MUSIC, "FEMusic")
@@ -601,9 +672,11 @@ end
 local function switch_track(dir)
     if not music_enabled or MUSIC_TRACK_COUNT < 2 then return end
     music_track = ((music_track or 1) - 1 + dir) % MUSIC_TRACK_COUNT + 1
-    -- 手动切过歌之后就不再自动洗牌，否则玩家挑的这一首下一轮就被随机顶掉了
-    music_shuffle = false
+    -- 手动切过歌之后就退出自动轮换，否则玩家挑的这一首下一轮就被顶掉了
+    music_rotate = false
     GLOBAL.FE_MUSIC = SOUND_EVENT_ROOT .. music_track
+    -- 玩家手动听的这一首也算走过的位置，记下它的下一首，下次开游戏接着往下轮
+    remember_track()
     local sound = TheFrontEnd:GetSound()
     if sound and type(sound.KillSound) == "function" then
         sound:KillSound("FEMusic")

@@ -53,7 +53,7 @@ Assets[#Assets + 1] = Asset("SOUNDPACKAGE", SOUND_FEV .. ".fev")
 | `letterbox` | 原版上下黑边显示/隐藏 |
 | `sidebar` | 左侧菜单栏底色显示/隐藏 |
 | `motd` | 右侧公告栏显示/隐藏 |
-| `music` | 内置 4 首 / 随机播放 / 原版 BGM |
+| `music` | 内置 4 首 / "轮换播放"（按 1→2→3→4 顺序过，进度存存档里，所以跨启动也接着走）/ 原版 BGM |
 | `music_volume` | 主菜单音量：默认 / 25% / 50% / 75%，只压主菜单这一首（音乐选"原版"时同样生效） |
 | `key_scheme` | 切换快捷键档位：WASD（默认）/ 方向键 / 不使用按键 |
 
@@ -121,8 +121,8 @@ ms_next=f10       # 下一首音乐
   垫的那张图就是片子自己的第一帧，所以多垫一两秒看不出来。
 - 压暗：`Video` 不支持 `SetTint`，所以在壁纸部件最上层蒙一张 `images/global.xml` 的 `square.tex`，用 `SetTint(0,0,0,alpha)` 当半透明黑。这层必须加在**首帧垫图之上**，否则接缝换帧的那一下画面会跟着忽明忽暗。
 - 轮换：扫描 `movies/` 时顺手记下"哪些槽位真的存在"，轮换只在这个表里**按顺序**过，所以空槽位既不会被抽到也不会被跳过。切的时机是主菜单**构造**那一刻，也就是"每次回主菜单换一张"，不是"每次循环换一张"（实测在子界面之间来回不算重新构造，基本就是每次启动游戏换一张）。进度（下一张的下标）走 `TheSim:SetPersistentString`，落在 `Documents/Klei/DoNotStarveTogether/<SteamID>/client_save/`，每个 profile 一份、重装 mod 不丢，也不用往 mod 目录里写东西；按键手动切到的那一张同样算进度。唯一要注意：**读档回调是异步的**，第一次构造时可能还没回来，那种情况就先随机一张、把进度写下去，并且回调后到也不覆盖自己刚写的值——最坏就是装好后的第一次启动不连续。
-- 不要在主菜单的 `OnHide`/`OnShow` 里对 `Video` 调 `Stop`/`Play`，会触发原生断言崩在 `util/Pool.h`。
-- 换壁纸要毁掉正在播的 `Video` 部件，而**同帧 `Kill()` 播放中的视频，一秒后必 `abort()`**。所以拆成两帧：当帧只 `Stop()`+`Hide()`
+- 曲目轮换：和壁纸同一套办法，但用**另一个键**（`p3r_music_next`），两条轮换各走各的、互不覆盖。这里的关键是实测到的时序：`GetPersistentString` 的回调在 **modmain 加载那一帧**就回来了（日志 `00:00:05`），而主菜单界面要到 `00:00:36` 才构造、游戏自己的起播更晚——所以在回调里改写 `GLOBAL.FE_MUSIC` 是**静默**的，不会出现"一首已经在响的歌被硬切"。三个边界：第一次装（读不到键）就把刚随机那一首的下一首记进去当种子；万一回调真晚于起播，就不切歌、改成把听见的这一首并进序列；手动切歌后本局退出自动轮换，但切到的这一首同样写进度。回调体整段包 `pcall`——modmain 沙盒里没做 `GLOBAL.setmetatable` 前导时 `pcall` 本身是 nil，而 `OnUpdate` 里抛出的错会一路打到 `frontend.lua` 的 `Update` 让游戏自杀。
+- 不要在主菜单的 `OnHide`/`OnShow` 里对 `Video` 调 `Stop`/`Play`，会触发原生断言崩在 `util/Pool.h`。- 换壁纸要毁掉正在播的 `Video` 部件，而**同帧 `Kill()` 播放中的视频，一秒后必 `abort()`**。所以拆成两帧：当帧只 `Stop()`+`Hide()`
   旧的，下一帧由一个独立的空壳 ticker 部件来 `Kill()`。这正是原版 `screens/moviedialog.lua` 的做法——它要么等 `IsDone()` 再杀，
   要么只 `Stop()` 然后等屏幕弹掉连带销毁，从不杀还在播的片子。
 - 按键只认 `keyup`：长按时系统连发 `keydown`，一次物理按键的 `keyup` 只来一回，否则一按就跳好几张。动作也不在回调里当场做，
@@ -151,8 +151,8 @@ ms_next=f10       # 下一首音乐
   `local Video/Widget/Image = require "widgets/…"` 三行、`modinfo.lua` 的 `*_compatible` 标志块、
   `GLOBAL.setmetatable(env, {`。反过来查，本 mod 的实现符号
   `MOVIE_SLOTS`、`read_cfg`、`parse_cfg`、`DURATION_HINTS`、`SEAM_PRE_COVER`、
-  `attach_music_watchdog`、`MUSIC_SHUFFLE`、`ASPECT_TIERS` 在对方文件里出现 **0 次**：
-  多槽位扫描、`movies/N.cfg` 旁路、随机播放看门狗、提前盖尾的接缝状态机、比例换算与黑底都是本仓库自行实现。
+  `attach_music_watchdog`、`MUSIC_ROTATE`、`ASPECT_TIERS` 在对方文件里出现 **0 次**：
+  多槽位扫描、`movies/N.cfg` 旁路、曲目轮换看门狗、提前盖尾的接缝状态机、比例换算与黑底都是本仓库自行实现。
 - 我们没有获得「温蒂动态壁纸」作者的代码授权，所以本仓库**也不含他们的任何代码**。
   若你要基于他们的实现做二次开发，请先到工坊页面确认对方的许可意愿。
 
@@ -187,6 +187,10 @@ controller D-pad — still navigates normally.
 order, one per main-menu build, and the position is saved in your profile
 (`TheSim:SetPersistentString` → `client_save/`), so a restart continues the cycle instead of repeating
 the wallpaper you just looked at. Stepping with the keyboard counts as progress too.
+`music` accepts the same *Rotate* idea under its own profile key (`p3r_music_next`, so the two cycles
+never overwrite each other): tracks play 1→2→3→4→1, and the position survives closing the game. The
+read callback lands on the modmain load frame while the menu builds and starts the music ~30 s later,
+which is why switching the pending track there is inaudible.
 `shade` (none / 10% / 20% / 30% / 45%) dims the picture so the menu text stays readable on a bright
 wallpaper — `Video` has no `SetTint`, so this is a translucent `square.tex` overlay, placed
 deliberately *above* the first-frame cover so the seam does not flicker brighter.
@@ -221,5 +225,5 @@ follow the workshop mod "Wendy Animated Wallpaper" (zzzzzzzs, 临夏听舟, item
 boilerplate (the three `require "widgets/…"` lines, the `*_compatible` flag block from Klei's
 modinfo template, `GLOBAL.setmetatable(env, {`). Conversely, every symbol that carries this mod's
 own logic — `MOVIE_SLOTS`, `read_cfg`, `parse_cfg`, `DURATION_HINTS`, `SEAM_PRE_COVER`,
-`attach_music_watchdog`, `MUSIC_SHUFFLE`, `ASPECT_TIERS` — appears zero times in their files. We do
+`attach_music_watchdog`, `MUSIC_ROTATE`, `ASPECT_TIERS` — appears zero times in their files. We do
 not have that author's permission to distribute their code, so none of it is in this repo either.
